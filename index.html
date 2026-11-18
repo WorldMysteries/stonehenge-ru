@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Стоунхендж — мегалит в реальном времени</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root{
+    --ink:#ece4d0; --dim:#a99f87; --amber:#d9a55a;
+    --line:rgba(236,228,208,.16); --panel:rgba(13,15,13,.78);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#07090c;color:var(--ink);
+    font-family:'Cormorant Garamond',Georgia,serif}
+  #scene{position:fixed;inset:0;width:100%;height:100%;cursor:grab;touch-action:none;display:block}
+  #scene.grabbing{cursor:grabbing}
+
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+
+  /* ---- шапка ---- */
+  .brand{position:fixed;top:26px;left:30px;z-index:5;pointer-events:none}
+  .brand .over{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.3em;
+    color:var(--amber);margin-bottom:10px}
+  .brand .over::before{content:'';display:inline-block;width:26px;height:1px;background:var(--amber);
+    margin-right:12px;vertical-align:middle}
+  .brand h1{font-weight:600;font-size:clamp(38px,5vw,62px);line-height:.95;letter-spacing:.01em}
+  .brand .sub{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.22em;
+    color:var(--dim);margin-top:12px;text-transform:uppercase}
+
+  /* ---- низ слева: компас и подсказка ---- */
+  .hud{position:fixed;left:30px;bottom:24px;z-index:5;display:flex;align-items:flex-end;
+    gap:18px;pointer-events:none}
+  #compass{width:84px;height:84px;opacity:.92}
+  .hint{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.18em;
+    color:var(--dim);line-height:1.9;text-transform:uppercase}
+
+  /* ---- панель ---- */
+  .panel{position:fixed;top:20px;right:20px;width:322px;max-height:calc(100vh - 40px);
+    overflow-y:auto;z-index:6;background:var(--panel);border:1px solid var(--line);
+    padding:22px 22px 16px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .panel::-webkit-scrollbar{width:4px}
+  .panel::-webkit-scrollbar-thumb{background:rgba(236,228,208,.2)}
+  .sec{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.26em;
+    color:var(--dim);text-transform:uppercase;margin-bottom:10px}
+  .clockrow{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px}
+  .clock{font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:500;letter-spacing:.04em}
+  .suninfo{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.06em}
+
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;
+    background:transparent;cursor:pointer;margin:4px 0 10px}
+  input[type=range]::-webkit-slider-runnable-track{height:2px;background:rgba(236,228,208,.22)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+    margin-top:-6px;background:var(--amber);border:none;border-radius:1px}
+  input[type=range]::-moz-range-track{height:2px;background:rgba(236,228,208,.22)}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;background:var(--amber);
+    border:none;border-radius:1px}
+
+  .seasons{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px}
+  .seasons button{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.1em;
+    text-transform:uppercase;padding:9px 4px;background:transparent;border:1px solid var(--line);
+    color:var(--dim);cursor:pointer;line-height:1.5;transition:border-color .2s,color .2s,background .2s}
+  .seasons button:hover{border-color:var(--amber);color:var(--amber)}
+  .seasons button.on{background:var(--amber);border-color:var(--amber);color:#191512}
+
+  .actions{display:grid;grid-template-columns:1fr 1fr 44px;gap:6px;margin-bottom:6px}
+  .btn{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;padding:11px 6px;background:transparent;border:1px solid var(--line);
+    color:var(--ink);cursor:pointer;transition:border-color .2s,color .2s}
+  .btn:hover{border-color:var(--amber);color:var(--amber)}
+  .btn.icon{display:flex;align-items:center;justify-content:center}
+  .btn.icon svg{display:block}
+  .btn.on{border-color:var(--amber);color:var(--amber)}
+  .axisnote{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;
+    color:var(--dim);margin:2px 0 14px;line-height:1.7}
+
+  .facts .fact{display:grid;grid-template-columns:98px 1fr;gap:10px;padding:10px 0;
+    border-top:1px solid var(--line);align-items:baseline}
+  .facts .fact span{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--amber);line-height:1.5}
+  .facts .fact p{font-size:14.5px;color:#d9d0ba;line-height:1.35}
+
+  .panel-toggle{display:none;position:fixed;right:16px;bottom:16px;z-index:7;
+    font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+    padding:12px 18px;background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    cursor:pointer;backdrop-filter:blur(10px)}
+  .panel-toggle.on{border-color:var(--amber);color:var(--amber)}
+
+  @media (max-width:880px){
+    .brand{top:16px;left:18px}
+    .brand h1{font-size:34px}
+    .brand .sub{font-size:8.5px}
+    .hud{left:18px;bottom:16px}
+    .hint{display:none}
+    .panel{top:auto;bottom:0;left:0;right:0;width:100%;max-height:60vh;
+      border-left:none;border-right:none;border-bottom:none;
+      transform:translateY(105%);transition:transform .35s cubic-bezier(.22,.8,.3,1)}
+    .panel.open{transform:none}
+    .panel-toggle{display:block}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<header class="brand">
+  <p class="over">51.1789° N · 1.8262° W</p>
+  <h1>Стоунхендж</h1>
+  <p class="sub">Сарсеновое кольцо · Уилтшир · ок. 2500 г. до н. э.</p>
+</header>
+
+<div class="hud">
+  <canvas id="compass" width="84" height="84"></canvas>
+  <p class="hint">Тяните — обзор<br>Колесо — масштаб<br>Щипок — масштаб</p>
+</div>
+
+<aside class="panel" id="panel">
+  <div class="sec">Время суток</div>
+  <div class="clockrow">
+    <span class="clock" id="clock">02:36</span>
+    <span class="suninfo" id="suninfo"></span>
+  </div>
+  <input type="range" id="time" min="0" max="24" step="0.01" aria-label="Время суток">
+
+  <div class="seasons" id="seasons">
+    <button data-dec="23.44" class="on">Летнее солнцестояние</button>
+    <button data-dec="0">Равноденствие</button>
+    <button data-dec="-23.44">Зимнее солнцестояние</button>
+  </div>
+
+  <div class="actions">
+    <button class="btn" id="btnAxis">Осевой вид</button>
+    <button class="btn" id="btnOrbit">Обзор</button>
+    <button class="btn icon on" id="btnPlay" aria-label="Пауза течения времени"></button>
+  </div>
+  <p class="axisnote">«Осевой вид» подводит камеру на линию восхода — солнце встанет прямо в арке трилитона.</p>
+
+  <div class="sec">Памятник</div>
+  <div class="facts">
+    <div class="fact"><span>≈2500 до н. э.</span><p>сарсеновое кольцо — 30 стояков и перекладин, пять трилитонов подковой</p></div>
+    <div class="fact"><span>Сарсены</span><p>песчаник с Мальборо-Даунс, ≈25 км от места</p></div>
+    <div class="fact"><span>Голубые камни</span><p>долерит из Пресели, Уэльс — ≈250 км пути</p></div>
+    <div class="fact"><span>Ось</span><p>наведена на точку восхода солнца в день летнего солнцестояния</p></div>
+    <div class="fact"><span>Трилитоны</span><p>до 7,3 м над землёй; перекладины держатся на шипах, без раствора</p></div>
+  </div>
+</aside>
+
+<button class="panel-toggle" id="panelToggle">Сведения</button>
+
+<script>
+'use strict';
+/* ================= утилиты ================= */
+const TAU=Math.PI*2, D2R=Math.PI/180, R2D=180/Math.PI;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,k)=>a+(b-a)*k;
+const smooth=(a,b,x)=>{const k=clamp((x-a)/(b-a),0,1);return k*k*(3-2*k)};
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const hex2rgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const mixRGB=(a,b,k)=>[lerp(a[0],b[0],k),lerp(a[1],b[1],k),lerp(a[2],b[2],k)];
+const easeC=k=>k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
+const wrapPi=a=>{while(a>Math.PI)a-=TAU;while(a<-Math.PI)a+=TAU;return a};
+
+/* ================= геометрия камня =================
+   Плита — 8 вершин с шумом, сужение кверху, наклон (lean).
+   Грани намотаны против часовой наружу (последняя — дно, нужно для теней). */
+const FACE_IDX=[[2,3,7,6],[1,0,4,5],[3,1,5,7],[0,2,6,4],[4,6,7,5],[0,1,3,2]];
+
+function makeSlab(o){
+  const rnd=mulberry32(o.seed), hx=o.w/2, hz=o.d/2;
+  const tp=o.taper??0.12, rg=o.rough??0.14;
+  const c=Math.cos(o.ry), s=Math.sin(o.ry), v=[];
+  for(let iy=0;iy<2;iy++)for(let iz=0;iz<2;iz++)for(let ix=0;ix<2;ix++){
+    let x=(ix*2-1)*hx, z=(iz*2-1)*hz, y=iy*o.h;
+    if(iy===1){ // верх: сужение, наклон, сколы
+      x*=(1-tp*(0.6+rnd()*0.8)); z*=(1-tp*(0.6+rnd()*0.8));
+      x+=(o.leanX||0)+(rnd()-0.5)*rg*0.6;
+      z+=(o.leanZ||0)+(rnd()-0.5)*rg*0.6;
+      y+=(rnd()-0.62)*0.14;
+    }else{ x+=(rnd()-0.5)*rg; z+=(rnd()-0.5)*rg; } // рваные кромки
+    v.push([x*c+z*s+o.x, y+(o.y0||0), -x*s+z*c+o.z]);
+  }
+  const tint=(rnd()-0.5)*22;
+  const col=o.col.map(cc=>cc+tint);
+  const faces=FACE_IDX.map((f,i)=>({i:f,bottom:i===5}));
+  return {v,faces,col};
+}
+
+/* ================= Стоунхендж ================= */
+const AXIS=50.7;                    // азимут оси памятника (° от севера)
+const LAT=51.178;                   // широта
+const stones=[];
+const posAz=(r,az)=>{const a=az*D2R;return{x:r*Math.sin(a),z:-r*Math.cos(a)}};
+const ryFor=az=>Math.PI-az*D2R;     // локальный +Z поворачивается наружу по радиусу
+const add=o=>stones.push(makeSlab(o));
+
+/* кольцо сарсенов: 30 стояков + перекладины (секция с упавшим камнем — обрушена) */
+const RS=15.5;
+for(let i=0;i<30;i++){
+  const az=i*12;
+  if(i===8){ // упавший стояк
+    const p=posAz(RS,az);
+    add({x:p.x,z:p.z,w:2.1,d:1.1,h:5.5,ry:ryFor(az),leanX:3.4,seed:782,col:[168,160,143],y0:-0.35,rough:0.15,taper:0.1});
+    continue;
+  }
+  const p=posAz(RS,az);
+  add({x:p.x,z:p.z,w:2.2,d:1.15,h:5.7,ry:ryFor(az),seed:100+i*7,col:[172,164,146],y0:-0.35,rough:0.16,taper:0.1});
+  const azm=az+6, pm=posAz(RS,azm);
+  if(i!==7&&i!==8) // перекладины у обрушенной секции упали вместе с ней
+    add({x:pm.x,z:pm.z,w:4.15,d:1.95,h:0.88,ry:ryFor(azm),seed:500+i*13,col:[163,156,140],y0:5.62,rough:0.1,taper:0.05});
+}
+
+/* пять трилитонов подковой, открытой на северо-восток */
+const RT=8.6, TRI=[230.7,230.7-40,230.7+40,230.7-80,230.7+80];
+TRI.forEach((am,k)=>{
+  const da=(1.32/RT)*R2D;
+  [-1,1].forEach(sg=>{
+    const az=am+sg*da, p=posAz(RT,az);
+    add({x:p.x,z:p.z,w:2.55,d:1.7,h:6.85,ry:ryFor(az),seed:900+k*3+sg+2,col:[177,167,148],y0:-0.4,rough:0.15,taper:0.13});
+  });
+  const pm=posAz(RT,am);
+  add({x:pm.x,z:pm.z,w:5.7,d:2.35,h:1.2,ry:ryFor(am),seed:950+k*3,col:[170,161,143],y0:6.68,rough:0.08,taper:0.04});
+});
+
+/* кольцо голубых камней */
+for(let i=0;i<19;i++){
+  const az=i*(360/19)+4, p=posAz(11.2,az), rr=mulberry32(300+i)();
+  add({x:p.x,z:p.z,w:1.15,d:0.75,h:1.5+rr*0.7,ry:ryFor(az),seed:300+i*5,col:[88,94,102],y0:-0.15,rough:0.12,taper:0.22});
+}
+
+/* алтарный камень, лежающие плиты, Пяточный и Слэтер-камни */
+{
+  const p=posAz(3,230.7);
+  add({x:p.x,z:p.z,w:4.8,d:2.4,h:0.85,ry:0.6,seed:777,col:[180,170,150],y0:0,rough:0.1,taper:0.02});
+  let p2=posAz(6.2,150);
+  add({x:p2.x,z:p2.z,w:5.4,d:2.1,h:1.1,ry:1.2,seed:780,col:[150,143,127],y0:0,rough:0.16,taper:0.03});
+  p2=posAz(12.5,300);
+  add({x:p2.x,z:p2.z,w:4.6,d:1.9,h:1.0,ry:2.4,seed:781,col:[148,141,125],y0:0,rough:0.16,taper:0.03});
+  p2=posAz(20.5,230.7);
+  add({x:p2.x,z:p2.z,w:4.4,d:1.6,h:0.95,ry:ryFor(230.7),seed:889,col:[152,145,129],y0:0,rough:0.14,taper:0.02});
+  const ph=posAz(27.5,AXIS);
+  add({x:ph.x,z:ph.z,w:2.7,d:2.0,h:4.9,ry:ryFor(AXIS),leanZ:-0.5,seed:888,col:[176,166,146],y0:-0.3,rough:0.18,taper:0.12});
+}
+
+/* трава-штрихи и звёзды — детерминированные */
+const tufts=[], rndT=mulberry32(42);
+for(let i=0;i<520;i++){
+  const r=Math.sqrt(rndT())*98, az=rndT()*360, a2=rndT()*TAU, l=0.25+rndT()*0.35;
+  tufts.push({p:posAz(r,az),dx:Math.cos(a2)*l,dz:Math.sin(a2)*l});
+}
+const stars=[], rndS=mulberry32(7);
+for(let i=0;i<240;i++){
+  const y=0.05+rndS()*0.95, rr=Math.sqrt(1-y*y), a=rndS()*TAU;
+  stars.push({d:{x:Math.cos(a)*rr,y,z:Math.sin(a)*rr},m:0.35+rndS()*0.65,ph:rndS()*9});
+}
+const birds=[], rndB=mulberry32(11);
+for(let i=0;i<5;i++)birds.push({r:16+rndB()*26,h:7+rndB()*8,a:rndB()*TAU,
+  sp:(0.045+rndB()*0.05)*(rndB()>0.5?1:-1),ph:rndB()*7,w:0.5+rndB()*0.3});
+
+/* ================= состояние ================= */
+const S={t:2.6,dec:23.44,playing:true,yaw:-1.23,pitch:0.13,dist:46,vYaw:0,vPitch:0};
+const TARGET={x:0,y:1.8,z:0};
+let tween=null;
+function flyTo(to){tween={t0:performance.now(),dur:1500,
+  from:{yaw:S.yaw,pitch:S.pitch,dist:S.dist},to}}
+const sunriseT=dec=>12-Math.acos(-Math.tan(LAT*D2R)*Math.tan(dec*D2R))*R2D/15;
+
+/* ================= небо и свет ================= */
+const SKY=[[-90,'#04060d','#0a0f1c'],[-12,'#050810','#0c1220'],[-6,'#0a1122','#2b2233'],
+  [-2,'#17233a','#7c4a30'],[2,'#2b405c','#c8874e'],[8,'#3f6a8d','#d9b27e'],
+  [20,'#4f7ea3','#bcd0cb'],[60,'#5a8bb0','#c5d5da']]
+  .map(s=>[s[0],hex2rgb(s[1]),hex2rgb(s[2])]);
+function skyAt(e){
+  let i=0;while(i<SKY.length-2&&e>SKY[i+1][0])i++;
+  const a=SKY[i],b=SKY[i+1],k=clamp((e-a[0])/(b[0]-a[0]),0,1);
+  return{zen:mixRGB(a[1],b[1],k),hor:mixRGB(a[2],b[2],k)};
+}
+
+/* ================= рендер ================= */
+const cv=document.getElementById('scene'), ctx=cv.getContext('2d');
+const cpv=document.getElementById('compass'), cctx=cpv.getContext('2d');
+let w=0,h=0,fs=0,cx=0,cy=0,vg=null;
+const cam={x:0,y:0,z:0}, B={R:{x:0,y:0,z:0},U:{x:0,y:1,z:0},F:{x:0,y:0,z:-1}};
+let L={x:0,y:1,z:0},M={x:0,y:1,z:0},LV={x:0,y:1,z:0},MV={x:0,y:1,z:0};
+let amb=[0,0,0],sunCol=[1,1,1],sunI=0,moonI=0,hor=[0,0,0],elevDeg=0,azDeg=0;
+
+function resize(){
+  w=innerWidth;h=innerHeight;
+  const d=Math.min(devicePixelRatio||1,2);
+  cv.width=w*d;cv.height=h*d;ctx.setTransform(d,0,0,d,0,0);
+  fs=0.5*h/Math.tan(23*D2R);cx=w/2;cy=h/2;
+  vg=ctx.createRadialGradient(cx,h*0.44,Math.min(w,h)*0.42,cx,h*0.5,Math.hypot(w,h)*0.62);
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(4,5,8,0.42)');
+  const d2=Math.min(devicePixelRatio||1,2);
+  cpv.width=84*d2;cpv.height=84*d2;cctx.setTransform(d2,0,0,d2,0,0);
+}
+addEventListener('resize',resize);resize();
+
+function updateCamera(){
+  const cp=Math.cos(S.pitch),sp=Math.sin(S.pitch);
+  cam.x=TARGET.x+S.dist*cp*Math.sin(S.yaw);
+  cam.y=TARGET.y+S.dist*sp;
+  cam.z=TARGET.z+S.dist*cp*Math.cos(S.yaw);
+  let fx=TARGET.x-cam.x,fy=TARGET.y-cam.y,fz=TARGET.z-cam.z;
+  const fl=Math.hypot(fx,fy,fz);fx/=fl;fy/=fl;fz/=fl;
+  let rx=fz*1-fy*0, ry=0, rz=-fx;          // F × up, up=(0,1,0)
+  const rl=Math.hypot(rx,ry,rz);rx/=rl;rz/=rl;
+  const ux=ry*fz-rz*fy, uy=rz*fx-rx*fz, uz=rx*fy-ry*fx; // R × F
+  B.F={x:fx,y:fy,z:fz};B.R={x:rx,y:ry,z:rz};B.U={x:ux,y:uy,z:uz};
+}
+function proj(p){
+  const vx=p.x-cam.x,vy=p.y-cam.y,vz=p.z-cam.z;
+  const dz=vx*B.F.x+vy*B.F.y+vz*B.F.z;
+  if(dz<0.3)return null;
+  const dx=vx*B.R.x+vy*B.R.y+vz*B.R.z;
+  const dy=vx*B.U.x+vy*B.U.y+vz*B.U.z;
+  return{x:cx+dx*fs/dz,y:cy-dy*fs/dz,z:dz};
+}
+const shadeRaw=(col,nl,nm,sky)=>{
+  const r=col[0]*(amb[0]+sky)+col[0]*nl*sunCol[0]*sunI+col[0]*nm*0.85;
+  const g=col[1]*(amb[1]+sky)+col[1]*nl*sunCol[1]*sunI+col[1]*nm*0.9;
+  const b=col[2]*(amb[2]+sky)+col[2]*nl*sunCol[2]*sunI+col[2]*nm*1.05;
+  return[clamp(r,0,255),clamp(g,0,255),clamp(b,0,255)];
+};
+const fogMix=(c,z)=>{const k=clamp((z-40)/150,0,1)*0.55;return k>0.004?mixRGB(c,hor,k):c};
+const rgb=c=>`rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;
+
+/* кольцо-полоса на земле */
+function band(r0,r1,col,nseg){
+  const c=shadeRaw(col,Math.max(L.y,0),Math.max(M.y,0)*moonI,0.1);
+  ctx.fillStyle=rgb(c);
+  for(let i=0;i<nseg;i++){
+    const a0=i/nseg*360,a1=(i+0.7)/nseg*360;
+    const q=[posAz(r1,a0),posAz(r0,a0),posAz(r0,a1),posAz(r1,a1)].map(proj);
+    if(q.some(p=>!p))continue;
+    ctx.beginPath();ctx.moveTo(q[0].x,q[0].y);
+    for(let j=1;j<4;j++)ctx.lineTo(q[j].x,q[j].y);
+    ctx.closePath();ctx.fill();
+  }
+}
+/* дорожка-авеню вдоль оси */
+function avenue(){
+  const a=AXIS*D2R,tx=Math.cos(a),tz=Math.sin(a);
+  const c=shadeRaw([128,122,94],Math.max(L.y,0),Math.max(M.y,0)*moonI,0.1);
+  ctx.fillStyle=rgb(c);
+  for(let r=25.5;r<95;r+=2.6){
+    const r2=Math.min(r+2.6,95);
+    const q=[];
+    [[r,2.2],[r,-2.2],[r2,-2.2],[r2,2.2]].forEach(([rr,s])=>{
+      const b=posAz(rr,AXIS);q.push(proj({x:b.x+tx*s,y:0,z:b.z+tz*s}));
+    });
+    if(q.some(p=>!p))continue;
+    ctx.beginPath();ctx.moveTo(q[0].x,q[0].y);
+    for(let j=1;j<4;j++)ctx.lineTo(q[j].x,q[j].y);
+    ctx.closePath();ctx.fill();
+  }
+}
+
+let prevNow=performance.now();
+function frame(now){
+  const dt=Math.min((now-prevNow)/1000,0.1);prevNow=now;
+
+  /* ход времени */
+  if(S.playing){S.t+=dt*0.14;if(S.t>=24)S.t-=24;}
+  if(tween){
+    const k=easeC(clamp((now-tween.t0)/tween.dur,0,1));
+    S.yaw=tween.from.yaw+wrapPi(tween.to.yaw-tween.from.yaw)*k;
+    S.pitch=lerp(tween.from.pitch,tween.to.pitch,k);
+    S.dist=lerp(tween.from.dist,tween.to.dist,k);
+    if(k>=1)tween=null;
+  }else if(!dragActive){
+    S.yaw+=S.vYaw;S.pitch=clamp(S.pitch+S.vPitch,0.04,1.45);
+    S.vYaw*=0.93;S.vPitch*=0.93;
+  }
+  updateCamera();
+
+  /* солнце и луна — честные формулы для широты Стоунхенджа */
+  const phi=LAT*D2R,dec=S.dec*D2R,H=(S.t-12)*15*D2R;
+  const sinE=Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(H);
+  elevDeg=Math.asin(clamp(sinE,-1,1))*R2D;
+  azDeg=(Math.PI+Math.atan2(Math.sin(H),Math.cos(H)*Math.sin(phi)-Math.tan(dec)*Math.cos(phi)))*R2D;
+  const azR=azDeg*D2R,ce=Math.cos(Math.asin(clamp(sinE,-1,1)));
+  L={x:ce*Math.sin(azR),y:Math.sin(Math.asin(clamp(sinE,-1,1))),z:-ce*Math.cos(azR)};
+  const Hm=H+Math.PI;
+  const sinEm=Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(Hm);
+  const elevM=Math.asin(clamp(sinEm,-1,1)),azM=Math.PI+Math.atan2(Math.sin(Hm),
+    Math.cos(Hm)*Math.sin(phi)-Math.tan(dec)*Math.cos(phi));
+  const cm=Math.cos(elevM);
+  M={x:cm*Math.sin(azM),y:Math.sin(elevM),z:-cm*Math.cos(azM)};
+  LV={x:B.R.x*L.x+B.R.y*L.y+B.R.z*L.z,y:B.U.x*L.x+B.U.y*L.y+B.U.z*L.z,z:B.F.x*L.x+B.F.y*L.y+B.F.z*L.z};
+  MV={x:B.R.x*M.x+B.R.y*M.y+B.R.z*M.z,y:B.U.x*M.x+B.U.y*M.y+B.U.z*M.z,z:B.F.x*M.x+B.F.y*M.y+B.F.z*M.z};
+
+  const up=smooth(-2,8,elevDeg);
+  sunCol=mixRGB([1,0.62,0.38],[1,0.97,0.9],smooth(0,22,elevDeg));
+  amb=mixRGB([0.13,0.15,0.22],[0.35,0.34,0.31],up);
+  sunI=up*0.95;
+  moonI=0.16*smooth(2,-6,elevDeg);
+  const night=smooth(2,-7,elevDeg);
+  const sky=skyAt(elevDeg);hor=sky.hor;
+
+  /* линия горизонта на экране */
+  const fhl=Math.hypot(B.F.x,B.F.z)||1e-6;
+  const hz=proj({x:cam.x+B.F.x/fhl*1000,y:0,z:cam.z+B.F.z/fhl*1000});
+  const horizonY=hz?hz.y:cy;
+
+  /* --- небо --- */
+  ctx.fillStyle=rgb(sky.zen);ctx.fillRect(0,0,w,h);
+  if(horizonY>0){
+    const g=ctx.createLinearGradient(0,horizonY,0,horizonY-Math.max(horizonY,420)*1.15);
+    g.addColorStop(0,rgb(hor));g.addColorStop(1,rgb(sky.zen));
+    ctx.fillStyle=g;ctx.fillRect(0,0,w,horizonY);
+  }
+
+  /* --- звёзды --- */
+  if(night>0.02){
+    ctx.fillStyle='#fff';
+    for(let i=0;i<stars.length;i++){
+      const st=stars[i],p=proj({x:cam.x+st.d.x*900,y:cam.y+st.d.y*900,z:cam.z+st.d.z*900});
+      if(!p||p.y>horizonY)continue;
+      const tw=0.6+0.4*Math.sin(now*0.002+st.ph*7);
+      ctx.globalAlpha=night*st.m*tw;
+      ctx.fillRect(p.x,p.y,st.m>0.8?1.6:1,st.m>0.8?1.6:1);
+    }
+    ctx.globalAlpha=1;
+  }
+
+  /* --- солнце и луна --- */
+  const sp2=proj({x:cam.x+L.x*800,y:cam.y+L.y*800,z:cam.z+L.z*800});
+  if(sp2){
+    if(elevDeg>-4){ // предрассветное/закатное свечение
+      const gr=fs*(0.9+(1-up)*2.2);
+      const g=ctx.createRadialGradient(sp2.x,sp2.y,0,sp2.x,sp2.y,gr);
+      g.addColorStop(0,`rgba(255,${170+up*40|0},95,${0.42*clamp(elevDeg+5,0,6)/6})`);
+      g.addColorStop(1,'rgba(255,160,90,0)');
+      ctx.fillStyle=g;ctx.fillRect(sp2.x-gr,sp2.y-gr,gr*2,gr*2);
+    }
+    if(elevDeg>-0.8){
+      const r=fs*0.0075;
+      ctx.fillStyle=rgb(mixRGB([255,214,160],[255,250,238],smooth(0,18,elevDeg)));
+      ctx.beginPath();ctx.arc(sp2.x,sp2.y,r,0,TAU);ctx.fill();
+    }
+  }
+  if(moonI>0.01){
+    const mp=proj({x:cam.x+M.x*800,y:cam.y+M.y*800,z:cam.z+M.z*800});
+    if(mp&&elevM>-0.8){
+      ctx.fillStyle=`rgba(226,230,238,${0.9})`;
+      ctx.beginPath();ctx.arc(mp.x,mp.y,fs*0.006,0,TAU);ctx.fill();
+      ctx.fillStyle=`rgba(210,216,228,0.5)`;
+      ctx.beginPath();ctx.arc(mp.x-fs*0.0018,mp.y-fs*0.001,fs*0.0013,0,TAU);ctx.fill();
+    }
+  }
+
+  /* --- земля: бесконечная равнина с дымкой у горизонта --- */
+  const nlG=Math.max(L.y,0),nmG=Math.max(M.y,0)*moonI;
+  const grass=shadeRaw([106,112,74],nlG,nmG,0.1);
+  if(horizonY<h){
+    const g=ctx.createLinearGradient(0,horizonY,0,horizonY+Math.max(60,(h-horizonY)*0.5));
+    g.addColorStop(0,rgb(mixRGB(hor,grass,0.35)));
+    g.addColorStop(0.55,rgb(grass));
+    ctx.fillStyle=g;ctx.fillRect(0,horizonY,w,h-horizonY+2);
+    band(21.8,25.2,[136,131,112],120);   // вал
+    band(19.6,21.8,[64,62,48],120);      // ров
+    avenue();
+    /* трава */
+    ctx.strokeStyle='rgba(28,32,20,0.28)';ctx.lineWidth=1;ctx.beginPath();
+    for(const t of tufts){
+      const p1=proj(t.p),p2=proj({x:t.p.x+t.dx,y:0,z:t.p.z+t.dz});
+      if(!p1||!p2)continue;
+      ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);
+    }
+    ctx.stroke();
+  }
+
+  /* --- тени: силуэт каждого камня на равнину --- */
+  if(elevDeg>0.5&&L.y>0.02){
+    ctx.fillStyle=`rgba(16,18,26,${0.2+0.16*up})`;
+    for(const st of stones){
+      const sh=st.v.map(v=>{
+        const k=v[1]/L.y;
+        return proj({x:v[0]-L.x*k,y:0,z:v[2]-L.z*k});
+      });
+      ctx.beginPath();
+      for(const fc of st.faces){
+        const f=fc.i;
+        if(sh[f[0]]&&sh[f[1]]&&sh[f[2]]&&sh[f[3]]){
+          ctx.moveTo(sh[f[0]].x,sh[f[0]].y);
+          ctx.lineTo(sh[f[1]].x,sh[f[1]].y);
+          ctx.lineTo(sh[f[2]].x,sh[f[2]].y);
+          ctx.lineTo(sh[f[3]].x,sh[f[3]].y);
+          ctx.closePath();
+        }
+      }
+      ctx.fill('nonzero');
+    }
+  }
+
+  /* --- камни: сортировка граней по глубине --- */
+  const list=[];
+  for(const st of stones){
+    const vp=st.v.map(p=>{
+      const vx=p[0]-cam.x,vy=p[1]-cam.y,vz=p[2]-cam.z;
+      const dz=vx*B.F.x+vy*B.F.y+vz*B.F.z;
+      return{x:vx*B.R.x+vy*B.R.y+vz*B.R.z,y:vx*B.U.x+vy*B.U.y+vz*B.U.z,
+             z:dz,sx:cx+(vx*B.R.x+vy*B.R.y+vz*B.R.z)*fs/dz,
+             sy:cy-(vx*B.U.x+vy*B.U.y+vz*B.U.z)*fs/dz};
+    });
+    for(const fc of st.faces){
+      if(fc.bottom)continue;
+      const f=fc.i,a=vp[f[0]],b=vp[f[1]],c=vp[f[2]],d=vp[f[3]];
+      if(a.z<0.3||b.z<0.3||c.z<0.3||d.z<0.3)continue;
+      const e1x=b.x-a.x,e1y=b.y-a.y,e1z=b.z-a.z;
+      const e2x=d.x-a.x,e2y=d.y-a.y,e2z=d.z-a.z;
+      let nx=e1y*e2z-e1z*e2y,ny=e1z*e2x-e1x*e2z,nz=e1x*e2y-e1y*e2x;
+      const nl2=Math.hypot(nx,ny,nz);if(nl2<1e-6)continue;
+      nx/=nl2;ny/=nl2;nz/=nl2;
+      const ccx=(a.x+b.x+c.x+d.x)/4,ccy=(a.y+b.y+c.y+d.y)/4,ccz=(a.z+b.z+c.z+d.z)/4;
+      if(nx*ccx+ny*ccy+nz*ccz>=0)continue;           // отсечение невидимых
+      const diff=Math.max(nx*LV.x+ny*LV.y+nz*LV.z,0);
+      const nm=Math.max(nx*MV.x+ny*MV.y+nz*MV.z,0)*moonI;
+      const skyK=0.05*(ny*0.5+0.5);
+      list.push({z:ccz,p:a,pts:[[a.sx,a.sy],[b.sx,b.sy],[c.sx,c.sy],[d.sx,d.sy]],
+        col:fogMix(shadeRaw(st.col,diff,nm,skyK),ccz)});
+    }
+  }
+  list.sort((p,q)=>q.z-p.z);
+  for(const it of list){
+    ctx.fillStyle=rgb(it.col);
+    ctx.beginPath();ctx.moveTo(it.pts[0][0],it.pts[0][1]);
+    for(let j=1;j<4;j++)ctx.lineTo(it.pts[j][0],it.pts[j][1]);
+    ctx.closePath();ctx.fill();
+  }
+
+  /* --- птицы --- */
+  const dayA=smooth(-1,4,elevDeg);
+  if(dayA>0.02){
+    ctx.lineWidth=1.4;
+    for(const bd of birds){
+      bd.a+=bd.sp*dt*10;
+      const p=proj({x:Math.cos(bd.a)*bd.r,y:bd.h+Math.sin(now*0.0007+bd.ph)*1.4,
+                    z:Math.sin(bd.a)*bd.r});
+      if(!p)continue;
+      const hw=fs*(bd.w/2)/p.z, fl=Math.sin(now*0.008+bd.ph)*0.6+0.3;
+      ctx.strokeStyle=`rgba(30,28,24,${0.7*dayA})`;
+      ctx.beginPath();
+      ctx.moveTo(p.x-hw,p.y-hw*(0.25+fl*0.55));
+      ctx.lineTo(p.x,p.y);ctx.lineTo(p.x+hw,p.y-hw*(0.25+fl*0.55));
+      ctx.stroke();
+    }
+  }
+
+  /* --- виньетка --- */
+  ctx.fillStyle=vg;ctx.fillRect(0,0,w,h);
+
+  syncUI();
+  requestAnimationFrame(frame);
+}
+
+/* ================= интерфейс ================= */
+const clockEl=document.getElementById('clock'),sunEl=document.getElementById('suninfo'),
+      timeInput=document.getElementById('time'),btnPlay=document.getElementById('btnPlay');
+let scrub=false;
+const ICON_PLAY='<svg viewBox="0 0 12 12" width="11" height="11"><path d="M2.5 1.5l8 4.5-8 4.5z" fill="currentColor"/></svg>';
+const ICON_PAUSE='<svg viewBox="0 0 12 12" width="11" height="11"><rect x="2" y="1.5" width="3" height="9" fill="currentColor"/><rect x="7" y="1.5" width="3" height="9" fill="currentColor"/></svg>';
+function syncPlayIcon(){
+  btnPlay.innerHTML=S.playing?ICON_PAUSE:ICON_PLAY;
+  btnPlay.classList.toggle('on',S.playing);
+  btnPlay.setAttribute('aria-label',S.playing?'Пауза течения времени':'Запустить ход времени');
+}
+syncPlayIcon();
+
+function syncUI(){
+  const hh=Math.floor(S.t),mm=Math.floor((S.t-hh)*60);
+  clockEl.textContent=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+  sunEl.textContent=`выс ${elevDeg>=0?'+':'−'}${Math.abs(elevDeg).toFixed(1)}° · аз ${azDeg.toFixed(1)}°`;
+  if(!scrub)timeInput.value=S.t.toFixed(2);
+  drawCompass();
+}
+function drawCompass(){
+  const azView=(((-S.yaw*R2D)%360)+360)%360, c=42, R=34;
+  cctx.clearRect(0,0,84,84);
+  cctx.strokeStyle='rgba(236,228,208,0.35)';cctx.lineWidth=1;
+  cctx.beginPath();cctx.arc(c,c,R,0,TAU);cctx.stroke();
+  cctx.strokeStyle='rgba(236,228,208,0.3)';
+  for(let A=0;A<360;A+=15){
+    const a=(A-azView)*D2R-Math.PI/2,r1=A%90?29:26;
+    cctx.beginPath();
+    cctx.moveTo(c+Math.cos(a)*r1,c+Math.sin(a)*r1);
+    cctx.lineTo(c+Math.cos(a)*33,c+Math.sin(a)*33);
+    cctx.stroke();
+  }
+  cctx.font='9px "IBM Plex Mono",monospace';cctx.textAlign='center';cctx.textBaseline='middle';
+  const names={0:'С',90:'В',180:'Ю',270:'З'};
+  for(const k in names){
+    const a=(+k-azView)*D2R-Math.PI/2;
+    cctx.fillStyle='rgba(236,228,208,0.75)';
+    cctx.fillText(names[k],c+Math.cos(a)*19,c+Math.sin(a)*19);
+  }
+  const ax=(AXIS-azView)*D2R-Math.PI/2;    // ось памятника — янтарная метка
+  cctx.strokeStyle='#d9a55a';cctx.lineWidth=2;
+  cctx.beginPath();
+  cctx.moveTo(c+Math.cos(ax)*11,c+Math.sin(ax)*11);
+  cctx.lineTo(c+Math.cos(ax)*33,c+Math.sin(ax)*33);
+  cctx.stroke();
+  cctx.fillStyle='#d9a55a';
+  cctx.beginPath();cctx.arc(c,c,2,0,TAU);cctx.fill();
+}
+
+timeInput.addEventListener('input',()=>{S.t=+timeInput.value});
+timeInput.addEventListener('pointerdown',()=>scrub=true);
+addEventListener('pointerup',()=>scrub=false);
+document.getElementById('seasons').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  S.dec=+b.dataset.dec;
+  document.querySelectorAll('#seasons button').forEach(x=>x.classList.toggle('on',x===b));
+});
+btnPlay.addEventListener('click',()=>{S.playing=!S.playing;syncPlayIcon()});
+document.getElementById('btnAxis').addEventListener('click',()=>{
+  S.dec=23.44;
+  document.querySelectorAll('#seasons button').forEach(x=>x.classList.toggle('on',x.dataset.dec==='23.44'));
+  S.t=(sunriseT(23.44)-0.4+24)%24;S.playing=true;syncPlayIcon();
+  flyTo({yaw:-AXIS*D2R,pitch:0.045,dist:31.5});
+});
+document.getElementById('btnOrbit').addEventListener('click',()=>flyTo({yaw:0.9,pitch:0.5,dist:40}));
+
+const panel=document.getElementById('panel'),pToggle=document.getElementById('panelToggle');
+pToggle.addEventListener('click',()=>{
+  panel.classList.toggle('open');
+  pToggle.classList.toggle('on',panel.classList.contains('open'));
+});
+
+/* ================= управление камерой ================= */
+let dragActive=false;
+const pts=new Map();let pinch0=0,dist0=0,lx=0,ly=0,lt=0;
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pts.size===1){dragActive=true;S.vYaw=0;S.vPitch=0;lx=e.clientX;ly=e.clientY;lt=now();}
+  else if(pts.size===2){
+    const[a,b]=[...pts.values()];
+    pinch0=Math.hypot(a.x-b.x,a.y-b.y);dist0=S.dist;
+  }
+  cv.classList.add('grabbing');
+});
+cv.addEventListener('pointermove',e=>{
+  if(!pts.has(e.pointerId))return;
+  pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pts.size===1&&dragActive){
+    const dx=e.clientX-lx,dy=e.clientY-ly,nt=now(),dts=Math.max((nt-lt)/1000,0.008);
+    S.yaw-=dx*0.0052;
+    S.pitch=clamp(S.pitch+dy*0.0042,0.04,1.45);
+    S.vYaw=-dx*0.0052*0.35/dts*0.016;   // инерция — доля последнего шага
+    S.vYaw=clamp(S.vYaw,-0.05,0.05);
+    S.vPitch=clamp(dy*0.0042*0.3,-0.03,0.03);
+    lx=e.clientX;ly=e.clientY;lt=nt;
+  }else if(pts.size===2){
+    const[a,b]=[...pts.values()];
+    const d=Math.hypot(a.x-b.x,a.y-b.y);
+    if(pinch0>0)S.dist=clamp(dist0*pinch0/d,8,110);
+  }
+});
+function endPtr(e){
+  pts.delete(e.pointerId);
+  if(pts.size===0){dragActive=false;cv.classList.remove('grabbing');}
+  if(pts.size<2)pinch0=0;
+}
+cv.addEventListener('pointerup',endPtr);
+cv.addEventListener('pointercancel',endPtr);
+cv.addEventListener('wheel',e=>{
+  e.preventDefault();
+  S.dist=clamp(S.dist*Math.exp(e.deltaY*0.001),8,110);
+},{passive:false});
+
+const now=()=>performance.now();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
